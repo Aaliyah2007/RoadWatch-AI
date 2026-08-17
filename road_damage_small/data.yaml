@@ -1,0 +1,6 @@
+train: ../road_damage_small/train/images
+val: ../road_damage_small/valid/images
+nc: 2
+names:
+- crack
+- pothole

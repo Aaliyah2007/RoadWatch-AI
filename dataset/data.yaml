@@ -1,0 +1,7 @@
+train: C:/Users/Shamsu/OneDrive/Desktop/RoadWatch AI/road_damage_small/train/images
+val: C:/Users/Shamsu/OneDrive/Desktop/RoadWatch AI/road_damage_small/valid/images
+
+nc: 2
+names:
+  - crack
+  - pothole
