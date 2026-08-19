@@ -5,3 +5,4 @@ pymysql
 python-multipart
 pydantic
 passlib[bcrypt]
+ultralytics
