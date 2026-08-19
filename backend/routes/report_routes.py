@@ -1,14 +1,14 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from ..database import get_db
-from ..models import (
+from database import get_db
+from models import (
     RoadReport,
     User,
     ReportStatusHistory,
     DamageDetection
 )
-from ..schemas import ReportCreate
+from schemas import ReportCreate
 
 
 router = APIRouter(
