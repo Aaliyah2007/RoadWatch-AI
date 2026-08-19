@@ -1,20 +1,27 @@
+import os
+
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
-from urllib.parse import quote_plus
 
-# Enter your MySQL root password here
-MYSQL_PASSWORD = "YOUR_ACTUAL_PASSWORD"
 
-# Safely encode special characters such as @ in the password
-DATABASE_URL = (
-    "mysql+pymysql://root:"
-    + quote_plus("A@liyah2007")
-    + "@localhost:3306/roadwatch_db"
-)
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+if not DATABASE_URL:
+    raise RuntimeError("DATABASE_URL environment variable is not set")
+
+# Railway MYSQL_URL may use mysql://
+# SQLAlchemy + PyMySQL needs mysql+pymysql://
+if DATABASE_URL.startswith("mysql://"):
+    DATABASE_URL = DATABASE_URL.replace(
+        "mysql://",
+        "mysql+pymysql://",
+        1
+    )
 
 engine = create_engine(
     DATABASE_URL,
-    echo=True
+    echo=False,
+    pool_pre_ping=True
 )
 
 SessionLocal = sessionmaker(
