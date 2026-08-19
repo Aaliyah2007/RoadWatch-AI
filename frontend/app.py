@@ -15,7 +15,7 @@ except Exception:
     YOLO_AVAILABLE = False
 
 
-API_URL = "http://127.0.0.1:8000"
+API_URL = "https://fortunate-compassion-production-4101.up.railway.app"
 
 
 # ==================================================
@@ -299,7 +299,7 @@ if st.session_state["role"] is None:
 
             st.session_state["role"] = "citizen"
 
-            st.experimental_rerun()
+            st.rerun()
 
     # ----------------------------------------------
     # OFFICIAL
@@ -321,7 +321,7 @@ if st.session_state["role"] is None:
 
             st.session_state["role"] = "official"
 
-            st.experimental_rerun()
+            st.rerun()
 
 
 # ==================================================
@@ -489,7 +489,7 @@ elif (
                                 "Login successful!"
                             )
 
-                            st.experimental_rerun()
+                            st.rerun()
 
                         except ValueError:
 
@@ -791,7 +791,7 @@ elif (
 
         st.session_state.clear()
 
-        st.experimental_rerun()
+        st.rerun()
 
 
 # ==================================================
@@ -874,7 +874,7 @@ elif (
                             "Official login successful!"
                         )
 
-                        st.experimental_rerun()
+                        st.rerun()
 
                 else:
 
@@ -1198,7 +1198,7 @@ elif (
                                 update_response.json()
                             )
 
-                            st.experimental_rerun()
+                            st.rerun()
 
                         else:
 
@@ -1283,4 +1283,4 @@ elif (
 
         st.session_state.clear()
 
-        st.experimental_rerun()
+        st.rerun()
