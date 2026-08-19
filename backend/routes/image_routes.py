@@ -5,8 +5,8 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, File, UploadFile, HTTPException
 from sqlalchemy.orm import Session
 
-from ..database import get_db
-from ..models import RoadReport, RoadImage, DamageDetection
+from database import get_db
+from models import RoadReport, RoadImage, DamageDetection
 
 
 # ==================================================
