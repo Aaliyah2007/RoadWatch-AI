@@ -1,6 +1,7 @@
 streamlit
 requests
 pillow
-ultralytics==8.3.0
+ultralytics
 torch
 torchvision
+opencv-python-headless
