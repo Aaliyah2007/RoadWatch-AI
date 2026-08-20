@@ -67,7 +67,11 @@ def load_yolo_model(model_path):
 
 
 model = load_yolo_model(MODEL_PATH)
-
+st.write("DEBUG - YOLO available:", YOLO_AVAILABLE)
+st.write(
+    "DEBUG - Model path:",
+    str(MODEL_PATH) if MODEL_PATH else "NOT FOUND"
+)
 
 # ============================================================
 # SESSION STATE
