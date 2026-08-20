@@ -6,7 +6,7 @@ import io
 
 
 # ============================================================
-# OPTIONAL YOLO IMPORT
+# YOLO IMPORT
 # ============================================================
 
 try:
@@ -20,7 +20,6 @@ except Exception as e:
 
 # ============================================================
 # FASTAPI BACKEND
-# IMPORTANT: USE THE SAME BACKEND YOU ARE TESTING IN SWAGGER
 # ============================================================
 
 API_URL = "https://roadwatch-ai-production.up.railway.app"
@@ -38,52 +37,93 @@ st.set_page_config(
 
 
 # ============================================================
-# PROJECT PATHS / YOLO MODEL
+# YOLO MODEL PATH
 # ============================================================
+
+# Railway Root Directory = /frontend
+# Therefore app.py is inside /frontend
+# and best.pt should be inside /frontend/AI/best.pt
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 
 MODEL_CANDIDATES = [
+    PROJECT_ROOT / "AI" / "best.pt",
     PROJECT_ROOT / "ai" / "best.pt",
+    PROJECT_ROOT / "AI" / "weights" / "best.pt",
     PROJECT_ROOT / "ai" / "weights" / "best.pt",
     PROJECT_ROOT / "best.pt",
-    PROJECT_ROOT / "yolov8n.pt",
 ]
 
 MODEL_PATH = next(
-    (path for path in MODEL_CANDIDATES if path.exists()),
+    (path for path in MODEL_CANDIDATES if path.is_file()),
     None
 )
 
 
+# ============================================================
+# DEBUG INFORMATION
+# ============================================================
+
+st.write("YOLO_AVAILABLE:", YOLO_AVAILABLE)
+st.write(
+    "MODEL_PATH:",
+    str(MODEL_PATH) if MODEL_PATH else "NOT FOUND"
+)
+
+if not YOLO_AVAILABLE:
+    st.error("YOLO IMPORT ERROR")
+    st.code(YOLO_IMPORT_ERROR)
+
+if MODEL_PATH:
+    st.success("MODEL FILE FOUND")
+    st.write("MODEL EXISTS:", MODEL_PATH.exists())
+else:
+    st.error("MODEL FILE NOT FOUND")
+
+    # Show exactly where Railway is looking
+    st.write("PROJECT ROOT:", str(PROJECT_ROOT))
+
+    st.write("Files detected inside frontend:")
+
+    try:
+        for item in PROJECT_ROOT.rglob("*"):
+            if item.is_file():
+                st.write(str(item.relative_to(PROJECT_ROOT)))
+    except Exception as e:
+        st.code(str(e))
+
+
+# ============================================================
+# LOAD YOLO MODEL
+# ============================================================
+
 @st.cache_resource
 def load_yolo_model(model_path):
 
-    if not YOLO_AVAILABLE or model_path is None:
+    if not YOLO_AVAILABLE:
+        return None
+
+    if model_path is None:
         return None
 
     try:
         return YOLO(str(model_path))
-    except Exception:
+    except Exception as e:
+        st.error("YOLO MODEL LOAD ERROR")
+        st.code(str(e))
         return None
 
 
 model = load_yolo_model(MODEL_PATH)
-st.write("YOLO_AVAILABLE:", YOLO_AVAILABLE)
-st.write("MODEL_PATH:", MODEL_PATH)
 
-if MODEL_PATH:
-    st.write("MODEL EXISTS:", MODEL_PATH.exists())
-
-if model:
+if model is not None:
     st.success("AI MODEL LOADED SUCCESSFULLY")
 else:
-    st.error("AI MODEL FAILED TO LOAD")
-st.write("DEBUG - YOLO available:", YOLO_AVAILABLE)
-st.write(
-    "DEBUG - Model path:",
-    str(MODEL_PATH) if MODEL_PATH else "NOT FOUND"
-)
+    st.warning(
+        "AI model is currently unavailable. "
+        "The rest of RoadWatch AI can still be used."
+    )
+
 
 # ============================================================
 # SESSION STATE
@@ -111,7 +151,7 @@ def show_ai_result(uploaded_file):
     if model is None:
 
         st.warning(
-            "AI model is not available yet. "
+            "AI model is not available. "
             "The image was uploaded successfully."
         )
 
@@ -153,7 +193,7 @@ def show_ai_result(uploaded_file):
         if boxes is None or len(boxes) == 0:
 
             st.info(
-                "No objects were detected by the current model."
+                "No road damage objects were detected."
             )
 
             return
@@ -203,47 +243,47 @@ def show_ai_result(uploaded_file):
         # SEVERITY / RCI
         # ====================================================
 
-        if MODEL_PATH and MODEL_PATH.name == "best.pt":
+        max_confidence = max(
+            d["confidence"]
+            for d in detections
+        )
 
-            max_confidence = max(
-                d["confidence"]
-                for d in detections
+        if (
+            len(detections) >= 3
+            or max_confidence >= 0.80
+        ):
+
+            severity = "High"
+            rci = 3
+
+        elif (
+            len(detections) >= 2
+            or max_confidence >= 0.60
+        ):
+
+            severity = "Medium"
+            rci = 2
+
+        else:
+
+            severity = "Low"
+            rci = 1
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+
+            st.metric(
+                "Estimated Severity",
+                severity
             )
 
-            if (
-                len(detections) >= 3
-                or max_confidence >= 0.80
-            ):
+        with col2:
 
-                severity = "High"
-                rci = 3
-
-            elif (
-                len(detections) >= 2
-                or max_confidence >= 0.60
-            ):
-
-                severity = "Medium"
-                rci = 2
-
-            else:
-
-                severity = "Low"
-                rci = 1
-
-            col1, col2 = st.columns(2)
-
-            with col1:
-                st.metric(
-                    "Estimated Severity",
-                    severity
-                )
-
-            with col2:
-                st.metric(
-                    "RCI Score",
-                    f"{rci}/3"
-                )
+            st.metric(
+                "RCI Score",
+                f"{rci}/3"
+            )
 
     except Exception as e:
 
@@ -331,10 +371,6 @@ elif (
         horizontal=True
     )
 
-    # ========================================================
-    # REGISTER
-    # ========================================================
-
     if option == "Register":
 
         st.subheader("Create Citizen Account")
@@ -401,10 +437,6 @@ elif (
                     )
 
                     st.code(str(e))
-
-    # ========================================================
-    # LOGIN
-    # ========================================================
 
     else:
 
@@ -691,10 +723,6 @@ elif (
 
         st.code(str(e))
 
-    # ========================================================
-    # LOGOUT
-    # ========================================================
-
     st.divider()
 
     if st.button(
@@ -719,7 +747,6 @@ elif (
 
     st.subheader("Official Login")
 
-    # FORM FIX
     with st.form("official_login_form"):
 
         email = st.text_input(
@@ -759,10 +786,6 @@ elif (
                     timeout=30
                 )
 
-                # --------------------------------------------
-                # SUCCESS
-                # --------------------------------------------
-
                 if response.status_code == 200:
 
                     result = response.json()
@@ -785,19 +808,11 @@ elif (
 
                         st.rerun()
 
-                # --------------------------------------------
-                # INVALID LOGIN
-                # --------------------------------------------
-
                 elif response.status_code == 401:
 
                     st.error(
                         "Invalid email or password."
                     )
-
-                # --------------------------------------------
-                # OTHER BACKEND ERROR
-                # --------------------------------------------
 
                 else:
 
@@ -837,10 +852,6 @@ elif (
         "and monitor road-condition activity."
     )
 
-    # ========================================================
-    # LOAD REPORTS
-    # ========================================================
-
     try:
 
         response = requests.get(
@@ -862,10 +873,6 @@ elif (
             result = response.json()
 
             reports = result.get("reports", [])
-
-            # ==================================================
-            # ANALYTICS
-            # ==================================================
 
             st.divider()
 
@@ -901,42 +908,24 @@ elif (
             m1, m2, m3 = st.columns(3)
 
             with m1:
-                st.metric(
-                    "Total Reports",
-                    total_reports
-                )
+                st.metric("Total Reports", total_reports)
 
             with m2:
-                st.metric(
-                    "Under Review",
-                    under_review_count
-                )
+                st.metric("Under Review", under_review_count)
 
             with m3:
-                st.metric(
-                    "Resolved",
-                    resolved_count
-                )
+                st.metric("Resolved", resolved_count)
 
             m4, m5, m6 = st.columns(3)
 
             with m4:
-                st.metric(
-                    "Submitted",
-                    submitted_count
-                )
+                st.metric("Submitted", submitted_count)
 
             with m5:
-                st.metric(
-                    "In Progress",
-                    in_progress_count
-                )
+                st.metric("In Progress", in_progress_count)
 
             with m6:
-                st.metric(
-                    "Rejected",
-                    rejected_count
-                )
+                st.metric("Rejected", rejected_count)
 
             if total_reports > 0:
 
@@ -953,10 +942,6 @@ elif (
                         "Rejected": rejected_count
                     }
                 )
-
-            # ==================================================
-            # ALL REPORTS
-            # ==================================================
 
             st.divider()
 
@@ -996,10 +981,6 @@ elif (
                         f"**Current Status:** "
                         f"{report.get('status', 'N/A')}"
                     )
-
-                    # ------------------------------------------
-                    # STATUS UPDATE
-                    # ------------------------------------------
 
                     new_status = st.selectbox(
                         "Update Status",
@@ -1059,10 +1040,6 @@ elif (
 
                             st.code(str(e))
 
-                    # ------------------------------------------
-                    # STATUS HISTORY
-                    # ------------------------------------------
-
                     try:
 
                         history_response = requests.get(
@@ -1073,9 +1050,7 @@ elif (
 
                         if history_response.status_code == 200:
 
-                            history_result = (
-                                history_response.json()
-                            )
+                            history_result = history_response.json()
 
                             history = history_result.get(
                                 "history",
@@ -1123,10 +1098,6 @@ elif (
         )
 
         st.code(str(e))
-
-    # ========================================================
-    # OFFICIAL LOGOUT
-    # ========================================================
 
     st.divider()
 
