@@ -67,6 +67,16 @@ def load_yolo_model(model_path):
 
 
 model = load_yolo_model(MODEL_PATH)
+st.write("YOLO_AVAILABLE:", YOLO_AVAILABLE)
+st.write("MODEL_PATH:", MODEL_PATH)
+
+if MODEL_PATH:
+    st.write("MODEL EXISTS:", MODEL_PATH.exists())
+
+if model:
+    st.success("AI MODEL LOADED SUCCESSFULLY")
+else:
+    st.error("AI MODEL FAILED TO LOAD")
 st.write("DEBUG - YOLO available:", YOLO_AVAILABLE)
 st.write(
     "DEBUG - Model path:",
