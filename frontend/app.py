@@ -4,9 +4,10 @@ from pathlib import Path
 from PIL import Image
 import io
 
-# ==================================================
+
+# ============================================================
 # OPTIONAL YOLO IMPORT
-# ==================================================
+# ============================================================
 
 try:
     from ultralytics import YOLO
@@ -15,12 +16,17 @@ except Exception:
     YOLO_AVAILABLE = False
 
 
-API_URL = "https://fortunate-compassion-production-4101.up.railway.app"
+# ============================================================
+# FASTAPI BACKEND
+# IMPORTANT: USE THE SAME BACKEND YOU ARE TESTING IN SWAGGER
+# ============================================================
+
+API_URL = "https://roadwatch-ai-production.up.railway.app"
 
 
-# ==================================================
+# ============================================================
 # PAGE CONFIGURATION
-# ==================================================
+# ============================================================
 
 st.set_page_config(
     page_title="RoadWatch AI",
@@ -29,9 +35,9 @@ st.set_page_config(
 )
 
 
-# ==================================================
-# PROJECT PATHS / AI MODEL
-# ==================================================
+# ============================================================
+# PROJECT PATHS / YOLO MODEL
+# ============================================================
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
@@ -50,6 +56,7 @@ MODEL_PATH = next(
 
 @st.cache_resource
 def load_yolo_model(model_path):
+
     if not YOLO_AVAILABLE or model_path is None:
         return None
 
@@ -62,9 +69,9 @@ def load_yolo_model(model_path):
 model = load_yolo_model(MODEL_PATH)
 
 
-# ==================================================
+# ============================================================
 # SESSION STATE
-# ==================================================
+# ============================================================
 
 if "role" not in st.session_state:
     st.session_state["role"] = None
@@ -79,9 +86,9 @@ if "user_name" not in st.session_state:
     st.session_state["user_name"] = None
 
 
-# ==================================================
-# AI DETECTION FUNCTION
-# ==================================================
+# ============================================================
+# AI DETECTION
+# ============================================================
 
 def show_ai_result(uploaded_file):
 
@@ -112,10 +119,6 @@ def show_ai_result(uploaded_file):
 
         st.subheader("🤖 AI Detection")
 
-        # ------------------------------------------
-        # SHOW ANNOTATED IMAGE
-        # ------------------------------------------
-
         annotated = result.plot()
 
         annotated_image = Image.fromarray(
@@ -125,12 +128,8 @@ def show_ai_result(uploaded_file):
         st.image(
             annotated_image,
             caption="AI analysis result",
-            use_column_width=True
+            use_container_width=True
         )
-
-        # ------------------------------------------
-        # DETECTIONS
-        # ------------------------------------------
 
         names = result.names
         boxes = result.boxes
@@ -140,11 +139,6 @@ def show_ai_result(uploaded_file):
             st.info(
                 "No objects were detected by the current model."
             )
-
-            if MODEL_PATH:
-                st.caption(
-                    f"Current model: {MODEL_PATH.name}"
-                )
 
             return
 
@@ -189,15 +183,15 @@ def show_ai_result(uploaded_file):
                 f"{detection['confidence'] * 100:.1f}% confidence"
             )
 
-        # ------------------------------------------
+        # ====================================================
         # SEVERITY / RCI
-        # ------------------------------------------
+        # ====================================================
 
         if MODEL_PATH and MODEL_PATH.name == "best.pt":
 
             max_confidence = max(
-                detection["confidence"]
-                for detection in detections
+                d["confidence"]
+                for d in detections
             )
 
             if (
@@ -224,26 +218,16 @@ def show_ai_result(uploaded_file):
             col1, col2 = st.columns(2)
 
             with col1:
-
                 st.metric(
                     "Estimated Severity",
                     severity
                 )
 
             with col2:
-
                 st.metric(
                     "RCI Score",
                     f"{rci}/3"
                 )
-
-        else:
-
-            st.warning(
-                "Severity/RCI will be enabled after "
-                "the road-damage-trained model "
-                "(best.pt) is added."
-            )
 
     except Exception as e:
 
@@ -251,9 +235,9 @@ def show_ai_result(uploaded_file):
         st.code(str(e))
 
 
-# ==================================================
+# ============================================================
 # TITLE
-# ==================================================
+# ============================================================
 
 st.title("🚧 RoadWatch AI")
 
@@ -262,9 +246,9 @@ st.subheader(
 )
 
 
-# ==================================================
+# ============================================================
 # HOME / ROLE SELECTION
-# ==================================================
+# ============================================================
 
 if st.session_state["role"] is None:
 
@@ -278,10 +262,6 @@ if st.session_state["role"] is None:
     st.header("Choose your role")
 
     col1, col2 = st.columns(2)
-
-    # ----------------------------------------------
-    # CITIZEN
-    # ----------------------------------------------
 
     with col1:
 
@@ -298,12 +278,7 @@ if st.session_state["role"] is None:
         ):
 
             st.session_state["role"] = "citizen"
-
             st.rerun()
-
-    # ----------------------------------------------
-    # OFFICIAL
-    # ----------------------------------------------
 
     with col2:
 
@@ -320,17 +295,16 @@ if st.session_state["role"] is None:
         ):
 
             st.session_state["role"] = "official"
-
             st.rerun()
 
 
-# ==================================================
+# ============================================================
 # CITIZEN LOGIN / REGISTER
-# ==================================================
+# ============================================================
 
 elif (
     st.session_state["role"] == "citizen"
-    and st.session_state["logged_in"] is False
+    and not st.session_state["logged_in"]
 ):
 
     st.header("👤 Citizen Portal")
@@ -341,29 +315,31 @@ elif (
         horizontal=True
     )
 
-    # ==================================================
-    # CITIZEN REGISTER
-    # ==================================================
+    # ========================================================
+    # REGISTER
+    # ========================================================
 
     if option == "Register":
 
-        st.subheader(
-            "Create Citizen Account"
-        )
+        st.subheader("Create Citizen Account")
 
-        name = st.text_input("Name")
+        with st.form("citizen_register_form"):
 
-        email = st.text_input("Email")
+            name = st.text_input("Name")
 
-        password = st.text_input(
-            "Password",
-            type="password"
-        )
+            email = st.text_input("Email")
 
-        if st.button(
-            "Register",
-            use_container_width=True
-        ):
+            password = st.text_input(
+                "Password",
+                type="password"
+            )
+
+            submitted = st.form_submit_button(
+                "Register",
+                use_container_width=True
+            )
+
+        if submitted:
 
             if not name or not email or not password:
 
@@ -373,182 +349,142 @@ elif (
 
             else:
 
-                data = {
-                    "name": name,
-                    "email": email,
-                    "password": password,
-                    "role": "citizen"
-                }
-
                 try:
 
                     response = requests.post(
                         f"{API_URL}/auth/register",
-                        json=data
+                        json={
+                            "name": name,
+                            "email": email,
+                            "password": password,
+                            "role": "citizen"
+                        },
+                        timeout=30
                     )
 
-                    if response.status_code == 200:
+                    if response.status_code in [200, 201]:
 
-                        try:
-
-                            result = response.json()
-
-                            st.success(
-                                result.get(
-                                    "message",
-                                    "Registration successful!"
-                                )
-                            )
-
-                        except ValueError:
-
-                            st.success(
-                                "Registration successful!"
-                            )
+                        st.success(
+                            "Registration successful! "
+                            "You can now login."
+                        )
 
                     else:
 
                         st.error(
-                            f"Registration failed. "
-                            f"Status code: "
-                            f"{response.status_code}"
+                            f"Registration failed "
+                            f"({response.status_code})"
                         )
 
-                        st.code(
-                            response.text
-                        )
+                        st.code(response.text)
 
-                except requests.exceptions.ConnectionError:
+                except requests.exceptions.RequestException as e:
 
                     st.error(
-                        "Cannot connect to FastAPI. "
-                        "Make sure the backend is running."
+                        "Cannot connect to FastAPI."
                     )
 
-    # ==================================================
-    # CITIZEN LOGIN
-    # ==================================================
+                    st.code(str(e))
+
+    # ========================================================
+    # LOGIN
+    # ========================================================
 
     else:
 
-        st.subheader(
-            "Citizen Login"
-        )
+        st.subheader("Citizen Login")
 
-        email = st.text_input("Email")
+        with st.form("citizen_login_form"):
 
-        password = st.text_input(
-            "Password",
-            type="password"
-        )
+            email = st.text_input(
+                "Email",
+                key="citizen_login_email"
+            )
 
-        if st.button(
-            "Login",
-            use_container_width=True
-        ):
+            password = st.text_input(
+                "Password",
+                type="password",
+                key="citizen_login_password"
+            )
 
-            if not email or not password:
+            submitted = st.form_submit_button(
+                "Login",
+                use_container_width=True
+            )
+
+        if submitted:
+
+            if not email.strip() or not password:
 
                 st.warning(
-                    "Please enter email and password."
+                    "Please enter your email and password."
                 )
 
             else:
-
-                data = {
-                    "email": email,
-                    "password": password
-                }
 
                 try:
 
                     response = requests.post(
                         f"{API_URL}/auth/login",
-                        json=data
+                        json={
+                            "email": email.strip(),
+                            "password": password
+                        },
+                        timeout=30
                     )
 
                     if response.status_code == 200:
 
-                        try:
+                        result = response.json()
 
-                            result = response.json()
+                        st.session_state["logged_in"] = True
+                        st.session_state["user_id"] = result["user_id"]
+                        st.session_state["user_name"] = result["name"]
 
-                            st.session_state[
-                                "logged_in"
-                            ] = True
+                        st.success("Login successful!")
 
-                            st.session_state[
-                                "user_id"
-                            ] = result["user_id"]
-
-                            st.session_state[
-                                "user_name"
-                            ] = result["name"]
-
-                            st.success(
-                                "Login successful!"
-                            )
-
-                            st.rerun()
-
-                        except ValueError:
-
-                            st.error(
-                                "FastAPI returned "
-                                "an invalid response."
-                            )
+                        st.rerun()
 
                     else:
 
                         st.error(
-                            f"Login failed. "
-                            f"Status code: "
-                            f"{response.status_code}"
+                            f"Login failed "
+                            f"({response.status_code})"
                         )
 
-                        st.code(
-                            response.text
-                        )
+                        st.code(response.text)
 
-                except requests.exceptions.ConnectionError:
+                except requests.exceptions.RequestException as e:
 
                     st.error(
-                        "Cannot connect to FastAPI. "
-                        "Make sure the backend is running."
+                        "Cannot connect to FastAPI."
                     )
 
+                    st.code(str(e))
 
-# ==================================================
+
+# ============================================================
 # CITIZEN DASHBOARD
-# ==================================================
+# ============================================================
 
 elif (
     st.session_state["role"] == "citizen"
-    and st.session_state["logged_in"] is True
+    and st.session_state["logged_in"]
 ):
 
     st.header("👤 Citizen Dashboard")
 
     st.success(
-        f"Welcome, "
-        f"{st.session_state['user_name']}!"
+        f"Welcome, {st.session_state['user_name']}!"
     )
-
-    # ==================================================
-    # REPORT ROAD DAMAGE
-    # ==================================================
 
     st.divider()
 
-    st.header(
-        "📝 Report Road Damage"
-    )
+    st.header("📝 Report Road Damage")
 
     description = st.text_area(
         "Describe the road damage",
-        placeholder=(
-            "Example: Large pothole near the main road..."
-        )
+        placeholder="Example: Large pothole near the main road..."
     )
 
     latitude = st.number_input(
@@ -570,11 +506,7 @@ elif (
 
     uploaded_file = st.file_uploader(
         "Upload Road Image",
-        type=[
-            "jpg",
-            "jpeg",
-            "png"
-        ]
+        type=["jpg", "jpeg", "png"]
     )
 
     if st.button(
@@ -585,8 +517,7 @@ elif (
         if not description or not address:
 
             st.warning(
-                "Please provide the description "
-                "and address."
+                "Please provide the description and address."
             )
 
         elif uploaded_file is None:
@@ -597,72 +528,52 @@ elif (
 
         else:
 
-            report_data = {
-                "description": description,
-                "latitude": latitude,
-                "longitude": longitude,
-                "address": address
-            }
-
             try:
-
-                # --------------------------------------
-                # CREATE REPORT
-                # --------------------------------------
 
                 response = requests.post(
                     f"{API_URL}/reports/",
                     params={
-                        "user_id":
-                            st.session_state["user_id"]
+                        "user_id": st.session_state["user_id"]
                     },
-                    json=report_data
+                    json={
+                        "description": description,
+                        "latitude": latitude,
+                        "longitude": longitude,
+                        "address": address
+                    },
+                    timeout=30
                 )
 
                 if response.status_code == 200:
 
                     report_result = response.json()
 
-                    report_id = (
-                        report_result["report_id"]
-                    )
+                    report_id = report_result["report_id"]
 
                     st.success(
-                        f"Road report submitted "
-                        f"successfully! "
+                        f"Road report submitted successfully! "
                         f"Report ID: {report_id}"
                     )
 
-                    # ----------------------------------
-                    # UPLOAD IMAGE
-                    # ----------------------------------
-
                     image_response = requests.post(
-                        f"{API_URL}/images/upload/"
-                        f"{report_id}",
+                        f"{API_URL}/images/upload/{report_id}",
                         files={
                             "file": (
                                 uploaded_file.name,
                                 uploaded_file.getvalue(),
                                 uploaded_file.type
                             )
-                        }
+                        },
+                        timeout=60
                     )
 
                     if image_response.status_code == 200:
 
                         st.success(
-                            "Road image uploaded "
-                            "successfully!"
+                            "Road image uploaded successfully!"
                         )
 
-                        # ----------------------------------
-                        # RUN AI
-                        # ----------------------------------
-
-                        show_ai_result(
-                            uploaded_file
-                        )
+                        show_ai_result(uploaded_file)
 
                     else:
 
@@ -671,53 +582,45 @@ elif (
                             "but image upload failed."
                         )
 
-                        st.code(
-                            image_response.text
-                        )
+                        st.code(image_response.text)
 
                 else:
 
                     st.error(
-                        f"Report submission failed. "
-                        f"Status code: "
-                        f"{response.status_code}"
+                        f"Report submission failed "
+                        f"({response.status_code})"
                     )
 
-                    st.code(
-                        response.text
-                    )
+                    st.code(response.text)
 
-            except requests.exceptions.ConnectionError:
+            except requests.exceptions.RequestException as e:
 
                 st.error(
-                    "Cannot connect to FastAPI. "
-                    "Make sure the backend is running."
+                    "Cannot connect to FastAPI."
                 )
 
-    # ==================================================
+                st.code(str(e))
+
+    # ========================================================
     # MY REPORTS
-    # ==================================================
+    # ========================================================
 
     st.divider()
 
-    st.header(
-        "📋 My Reports"
-    )
+    st.header("📋 My Reports")
 
     try:
 
         response = requests.get(
-            f"{API_URL}/reports/"
+            f"{API_URL}/reports/",
+            timeout=30
         )
 
         if response.status_code == 200:
 
             result = response.json()
 
-            reports = result.get(
-                "reports",
-                []
-            )
+            reports = result.get("reports", [])
 
             my_reports = [
                 report
@@ -731,8 +634,7 @@ elif (
                 for report in my_reports:
 
                     st.subheader(
-                        f"🚧 Report "
-                        f"#{report.get('report_id')}"
+                        f"🚧 Report #{report.get('report_id')}"
                     )
 
                     st.write(
@@ -755,32 +657,27 @@ elif (
             else:
 
                 st.info(
-                    "You have not submitted "
-                    "any reports yet."
+                    "You have not submitted any reports yet."
                 )
 
         else:
 
             st.error(
-                f"Unable to load reports. "
-                f"Status code: "
-                f"{response.status_code}"
+                f"Unable to load reports "
+                f"({response.status_code})"
             )
 
-            st.code(
-                response.text
-            )
-
-    except requests.exceptions.ConnectionError:
+    except requests.exceptions.RequestException as e:
 
         st.error(
-            "Cannot connect to FastAPI. "
-            "Make sure the backend is running."
+            "Cannot connect to FastAPI."
         )
 
-    # ==================================================
-    # CITIZEN LOGOUT
-    # ==================================================
+        st.code(str(e))
+
+    # ========================================================
+    # LOGOUT
+    # ========================================================
 
     st.divider()
 
@@ -790,42 +687,44 @@ elif (
     ):
 
         st.session_state.clear()
-
         st.rerun()
 
 
-# ==================================================
+# ============================================================
 # OFFICIAL LOGIN
-# ==================================================
+# ============================================================
 
 elif (
     st.session_state["role"] == "official"
-    and st.session_state["logged_in"] is False
+    and not st.session_state["logged_in"]
 ):
 
-    st.header(
-        "👮 Official Portal"
-    )
+    st.header("👮 Official Portal")
 
-    st.subheader(
-        "Official Login"
-    )
+    st.subheader("Official Login")
 
-    email = st.text_input(
-        "Official Email"
-    )
+    # FORM FIX
+    with st.form("official_login_form"):
 
-    password = st.text_input(
-        "Password",
-        type="password"
-    )
+        email = st.text_input(
+            "Official Email",
+            key="official_login_email"
+        )
 
-    if st.button(
-        "Official Login",
-        use_container_width=True
-    ):
+        password = st.text_input(
+            "Password",
+            type="password",
+            key="official_login_password"
+        )
 
-        if not email or not password:
+        submitted = st.form_submit_button(
+            "Official Login",
+            use_container_width=True
+        )
+
+    if submitted:
+
+        if not email.strip() or not password:
 
             st.warning(
                 "Please enter your email and password."
@@ -833,17 +732,20 @@ elif (
 
         else:
 
-            data = {
-                "email": email,
-                "password": password
-            }
-
             try:
 
                 response = requests.post(
                     f"{API_URL}/auth/login",
-                    json=data
+                    json={
+                        "email": email.strip(),
+                        "password": password
+                    },
+                    timeout=30
                 )
+
+                # --------------------------------------------
+                # SUCCESS
+                # --------------------------------------------
 
                 if response.status_code == 200:
 
@@ -852,23 +754,14 @@ elif (
                     if result.get("role") != "official":
 
                         st.error(
-                            "This account is not "
-                            "an official account."
+                            "This account is not an official account."
                         )
 
                     else:
 
-                        st.session_state[
-                            "logged_in"
-                        ] = True
-
-                        st.session_state[
-                            "user_id"
-                        ] = result["user_id"]
-
-                        st.session_state[
-                            "user_name"
-                        ] = result["name"]
+                        st.session_state["logged_in"] = True
+                        st.session_state["user_id"] = result["user_id"]
+                        st.session_state["user_name"] = result["name"]
 
                         st.success(
                             "Official login successful!"
@@ -876,42 +769,51 @@ elif (
 
                         st.rerun()
 
+                # --------------------------------------------
+                # INVALID LOGIN
+                # --------------------------------------------
+
+                elif response.status_code == 401:
+
+                    st.error(
+                        "Invalid email or password."
+                    )
+
+                # --------------------------------------------
+                # OTHER BACKEND ERROR
+                # --------------------------------------------
+
                 else:
 
                     st.error(
-                        f"Login failed. "
-                        f"Status code: "
-                        f"{response.status_code}"
+                        f"Login failed "
+                        f"({response.status_code})"
                     )
 
-                    st.code(
-                        response.text
-                    )
+                    st.code(response.text)
 
-            except requests.exceptions.ConnectionError:
+            except requests.exceptions.RequestException as e:
 
                 st.error(
-                    "Cannot connect to FastAPI. "
-                    "Make sure the backend is running."
+                    "Cannot connect to FastAPI."
                 )
 
+                st.code(str(e))
 
-# ==================================================
+
+# ============================================================
 # OFFICIAL DASHBOARD
-# ==================================================
+# ============================================================
 
 elif (
     st.session_state["role"] == "official"
-    and st.session_state["logged_in"] is True
+    and st.session_state["logged_in"]
 ):
 
-    st.header(
-        "👮 Official Dashboard"
-    )
+    st.header("👮 Official Dashboard")
 
     st.success(
-        f"Welcome, "
-        f"{st.session_state['user_name']}!"
+        f"Welcome, {st.session_state['user_name']}!"
     )
 
     st.write(
@@ -919,131 +821,106 @@ elif (
         "and monitor road-condition activity."
     )
 
-    # ==================================================
-    # LOAD REPORT DATA
-    # ==================================================
+    # ========================================================
+    # LOAD REPORTS
+    # ========================================================
 
     try:
 
         response = requests.get(
-            f"{API_URL}/reports/"
+            f"{API_URL}/reports/",
+            timeout=30
         )
 
         if response.status_code != 200:
 
             st.error(
-                f"Unable to load reports. "
-                f"Status code: {response.status_code}"
+                f"Unable to load reports "
+                f"({response.status_code})"
             )
 
-            st.code(
-                response.text
-            )
+            st.code(response.text)
 
         else:
 
             result = response.json()
 
-            reports = result.get(
-                "reports",
-                []
-            )
+            reports = result.get("reports", [])
 
             # ==================================================
-            # ANALYTICS / VISUALIZATION
+            # ANALYTICS
             # ==================================================
 
             st.divider()
 
-            st.header(
-                "📊 RoadWatch Analytics"
-            )
+            st.header("📊 RoadWatch Analytics")
 
             total_reports = len(reports)
 
             submitted_count = sum(
-                1
-                for report in reports
-                if report.get("status") == "submitted"
+                1 for r in reports
+                if r.get("status") == "submitted"
             )
 
             under_review_count = sum(
-                1
-                for report in reports
-                if report.get("status") == "under_review"
+                1 for r in reports
+                if r.get("status") == "under_review"
             )
 
             in_progress_count = sum(
-                1
-                for report in reports
-                if report.get("status") == "in_progress"
+                1 for r in reports
+                if r.get("status") == "in_progress"
             )
 
             resolved_count = sum(
-                1
-                for report in reports
-                if report.get("status") == "resolved"
+                1 for r in reports
+                if r.get("status") == "resolved"
             )
 
             rejected_count = sum(
-                1
-                for report in reports
-                if report.get("status") == "rejected"
+                1 for r in reports
+                if r.get("status") == "rejected"
             )
 
-            # ----------------------------------------------
-            # METRICS
-            # ----------------------------------------------
+            m1, m2, m3 = st.columns(3)
 
-            metric1, metric2, metric3 = st.columns(3)
-
-            with metric1:
-
+            with m1:
                 st.metric(
                     "Total Reports",
                     total_reports
                 )
 
-            with metric2:
-
+            with m2:
                 st.metric(
                     "Under Review",
                     under_review_count
                 )
 
-            with metric3:
-
+            with m3:
                 st.metric(
                     "Resolved",
                     resolved_count
                 )
 
-            metric4, metric5, metric6 = st.columns(3)
+            m4, m5, m6 = st.columns(3)
 
-            with metric4:
-
+            with m4:
                 st.metric(
                     "Submitted",
                     submitted_count
                 )
 
-            with metric5:
-
+            with m5:
                 st.metric(
                     "In Progress",
                     in_progress_count
                 )
 
-            with metric6:
-
+            with m6:
                 st.metric(
                     "Rejected",
                     rejected_count
                 )
-
-            # ==================================================
-            # STATUS CHART
-            # ==================================================
 
             if total_reports > 0:
 
@@ -1051,81 +928,29 @@ elif (
                     "📈 Report Status Distribution"
                 )
 
-                status_data = {
-                    "Submitted": submitted_count,
-                    "Under Review": under_review_count,
-                    "In Progress": in_progress_count,
-                    "Resolved": resolved_count,
-                    "Rejected": rejected_count
-                }
-
                 st.bar_chart(
-                    status_data
-                )
-
-                # ----------------------------------------------
-                # PIE-STYLE VISUALIZATION USING DATAFRAME
-                # ----------------------------------------------
-
-                try:
-
-                    import pandas as pd
-
-                    chart_df = pd.DataFrame(
-                        {
-                            "Status": [
-                                "Submitted",
-                                "Under Review",
-                                "In Progress",
-                                "Resolved",
-                                "Rejected"
-                            ],
-                            "Reports": [
-                                submitted_count,
-                                under_review_count,
-                                in_progress_count,
-                                resolved_count,
-                                rejected_count
-                            ]
-                        }
-                    )
-
-                    st.subheader(
-                        "📊 Status Summary"
-                    )
-
-                    st.dataframe(
-                        chart_df,
-                        use_container_width=True
-                    )
-
-                except Exception:
-
-                    pass
-
-            else:
-
-                st.info(
-                    "No report data available for analytics yet."
+                    {
+                        "Submitted": submitted_count,
+                        "Under Review": under_review_count,
+                        "In Progress": in_progress_count,
+                        "Resolved": resolved_count,
+                        "Rejected": rejected_count
+                    }
                 )
 
             # ==================================================
-            # ALL ROAD REPORTS
+            # ALL REPORTS
             # ==================================================
 
             st.divider()
 
-            st.header(
-                "📋 All Road Reports"
-            )
+            st.header("📋 All Road Reports")
 
             if reports:
 
                 for report in reports:
 
-                    report_id = report.get(
-                        "report_id"
-                    )
+                    report_id = report.get("report_id")
 
                     st.subheader(
                         f"🚧 Report #{report_id}"
@@ -1177,83 +1002,95 @@ elif (
                         key=f"update_{report_id}"
                     ):
 
-                        update_response = requests.put(
-                            f"{API_URL}/reports/"
-                            f"{report_id}/status",
-                            params={
-                                "status": new_status,
-                                "official_user_id":
-                                    st.session_state["user_id"]
-                            }
-                        )
+                        try:
 
-                        if update_response.status_code == 200:
-
-                            st.success(
-                                f"Report #{report_id} "
-                                "updated successfully!"
+                            update_response = requests.put(
+                                f"{API_URL}/reports/"
+                                f"{report_id}/status",
+                                params={
+                                    "status": new_status,
+                                    "official_user_id":
+                                        st.session_state["user_id"]
+                                },
+                                timeout=30
                             )
 
-                            st.json(
-                                update_response.json()
-                            )
+                            if update_response.status_code == 200:
 
-                            st.rerun()
+                                st.success(
+                                    f"Report #{report_id} "
+                                    "updated successfully!"
+                                )
 
-                        else:
+                                st.rerun()
+
+                            else:
+
+                                st.error(
+                                    f"Update failed "
+                                    f"({update_response.status_code})"
+                                )
+
+                                st.code(
+                                    update_response.text
+                                )
+
+                        except requests.exceptions.RequestException as e:
 
                             st.error(
-                                f"Update failed. "
-                                f"Status code: "
-                                f"{update_response.status_code}"
+                                "Cannot connect to FastAPI."
                             )
 
-                            st.code(
-                                update_response.text
-                            )
+                            st.code(str(e))
 
                     # ------------------------------------------
                     # STATUS HISTORY
                     # ------------------------------------------
 
-                    history_response = requests.get(
-                        f"{API_URL}/reports/"
-                        f"{report_id}/history"
-                    )
+                    try:
 
-                    if history_response.status_code == 200:
-
-                        history_result = (
-                            history_response.json()
+                        history_response = requests.get(
+                            f"{API_URL}/reports/"
+                            f"{report_id}/history",
+                            timeout=30
                         )
 
-                        history = history_result.get(
-                            "history",
-                            []
-                        )
+                        if history_response.status_code == 200:
 
-                        if history:
+                            history_result = (
+                                history_response.json()
+                            )
 
-                            with st.expander(
-                                "View Status History"
-                            ):
+                            history = history_result.get(
+                                "history",
+                                []
+                            )
 
-                                for item in history:
+                            if history:
 
-                                    st.write(
-                                        f"**"
-                                        f"{item.get('old_status', 'N/A')}"
-                                        f" → "
-                                        f"{item.get('new_status', 'N/A')}"
-                                        f"**"
-                                    )
+                                with st.expander(
+                                    "View Status History"
+                                ):
 
-                                    st.caption(
-                                        f"Official ID: "
-                                        f"{item.get('changed_by', 'N/A')} | "
-                                        f"Time: "
-                                        f"{item.get('changed_at', 'N/A')}"
-                                    )
+                                    for item in history:
+
+                                        st.write(
+                                            f"**"
+                                            f"{item.get('old_status', 'N/A')}"
+                                            f" → "
+                                            f"{item.get('new_status', 'N/A')}"
+                                            f"**"
+                                        )
+
+                                        st.caption(
+                                            f"Official ID: "
+                                            f"{item.get('changed_by', 'N/A')} | "
+                                            f"Time: "
+                                            f"{item.get('changed_at', 'N/A')}"
+                                        )
+
+                    except requests.exceptions.RequestException:
+                        pass
 
                     st.divider()
 
@@ -1263,16 +1100,17 @@ elif (
                     "No road reports available."
                 )
 
-    except requests.exceptions.ConnectionError:
+    except requests.exceptions.RequestException as e:
 
         st.error(
-            "Cannot connect to FastAPI. "
-            "Make sure the backend is running."
+            "Cannot connect to FastAPI."
         )
 
-    # ==================================================
+        st.code(str(e))
+
+    # ========================================================
     # OFFICIAL LOGOUT
-    # ==================================================
+    # ========================================================
 
     st.divider()
 
@@ -1282,5 +1120,4 @@ elif (
     ):
 
         st.session_state.clear()
-
         st.rerun()
