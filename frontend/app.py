@@ -12,8 +12,10 @@ import io
 try:
     from ultralytics import YOLO
     YOLO_AVAILABLE = True
-except Exception:
+    YOLO_IMPORT_ERROR = ""
+except Exception as e:
     YOLO_AVAILABLE = False
+    YOLO_IMPORT_ERROR = str(e)
 
 
 # ============================================================
