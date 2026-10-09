@@ -18,10 +18,18 @@ if DATABASE_URL.startswith("mysql://"):
         1
     )
 
+
+connect_args = (
+    {"ssl": {}}
+    if "aivencloud.com" in DATABASE_URL
+    else {}
+)
+
 engine = create_engine(
     DATABASE_URL,
     echo=False,
-    pool_pre_ping=True
+    pool_pre_ping=True,
+    connect_args=connect_args
 )
 
 SessionLocal = sessionmaker(
