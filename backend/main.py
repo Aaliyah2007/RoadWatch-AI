@@ -1,7 +1,8 @@
 from fastapi import FastAPI
 from sqlalchemy import text
 
-from database import engine
+from database import Base, engine
+import models
 from routes.auth_routes import router as auth_router
 from routes.report_routes import router as report_router
 from routes.image_routes import router as image_router
@@ -12,6 +13,7 @@ app = FastAPI(
     description="AI-powered road damage reporting and management system",
     version="1.0.0"
 )
+Base.metadata.create_all(bind=engine)
 
 
 app.include_router(auth_router)
