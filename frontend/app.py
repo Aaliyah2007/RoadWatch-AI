@@ -26,7 +26,7 @@ except Exception as e:
 # FASTAPI BACKEND
 # ============================================================
 
-API_URL = "https://roadwatch-ai-production.up.railway.app"
+API_URL = "http://127.0.0.1:8001"
 
 
 # ============================================================
@@ -44,19 +44,9 @@ st.set_page_config(
 # PROJECT PATHS / YOLO MODEL
 # ============================================================
 
-PROJECT_ROOT = Path(__file__).resolve().parent
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
-MODEL_CANDIDATES = [
-    PROJECT_ROOT / "ai" / "best.pt",
-    PROJECT_ROOT / "frontend" / "ai" / "best.pt",
-    PROJECT_ROOT / "ai" / "weights" / "best.pt",
-    PROJECT_ROOT / "best.pt",
-]
-
-MODEL_PATH = next(
-    (path for path in MODEL_CANDIDATES if path.exists()),
-    None
-)
+MODEL_PATH = PROJECT_ROOT / "ai" / "best.pt"
 
 
 @st.cache_resource
@@ -131,7 +121,7 @@ if "user_name" not in st.session_state:
 # AI DETECTION
 # ============================================================
 
-def show_ai_result(uploaded_file):
+def show_ai_result(uploaded_file, report_id):
 
     if model is None:
 
@@ -152,7 +142,7 @@ def show_ai_result(uploaded_file):
 
         results = model.predict(
             source=image,
-            conf=0.25,
+            conf=0.01,
             verbose=False
         )
 
@@ -169,7 +159,7 @@ def show_ai_result(uploaded_file):
         st.image(
             annotated_image,
             caption="AI analysis result",
-            use_container_width=True
+            use_column_width=True
         )
 
         names = result.names
@@ -254,15 +244,58 @@ def show_ai_result(uploaded_file):
             severity = "Low"
             rci = 1
 
+        # ==================================================
+        # SAVE AI DETECTIONS TO BACKEND / MYSQL
+        # ==================================================
+
+        detection_payload = []
+
+        for detection in detections:
+
+            detection_payload.append(
+                {
+                    "damage_type": detection["class"],
+                    "confidence": detection["confidence"],
+                    "severity": severity
+                }
+            )
+
+        try:
+
+            save_response = requests.post(
+                f"{API_URL}/reports/{report_id}/detections",
+                json={
+                    "detections": detection_payload,
+                    "overall_severity": severity,
+                    "rci_score": rci
+                },
+                timeout=10
+            )
+
+            if save_response.status_code != 200:
+
+                st.warning(
+                    "AI results were detected but "
+                    "could not be saved."
+                )
+
+        except Exception as e:
+
+            st.warning(
+                f"AI results detected, but saving failed: {e}"
+            )
+
         col1, col2 = st.columns(2)
 
         with col1:
+
             st.metric(
                 "Estimated Severity",
                 severity
             )
 
         with col2:
+
             st.metric(
                 "RCI Score",
                 f"{rci}/3"
@@ -271,6 +304,7 @@ def show_ai_result(uploaded_file):
     except Exception as e:
 
         st.error("AI inference failed.")
+
         st.code(str(e))
 
 
@@ -317,7 +351,7 @@ if st.session_state["role"] is None:
         ):
 
             st.session_state["role"] = "citizen"
-            st.rerun()
+            st.experimental_rerun()
 
     with col2:
 
@@ -334,7 +368,7 @@ if st.session_state["role"] is None:
         ):
 
             st.session_state["role"] = "official"
-            st.rerun()
+            st.experimental_rerun()
 
 
 # ============================================================
@@ -472,7 +506,7 @@ elif (
                         st.session_state["user_name"] = result["name"]
 
                         st.success("Login successful!")
-                        st.rerun()
+                        st.experimental_rerun()
 
                     else:
 
@@ -602,7 +636,10 @@ elif (
                             "Road image uploaded successfully!"
                         )
 
-                        show_ai_result(uploaded_file)
+                        show_ai_result(
+                            uploaded_file,
+                            report_id
+                        )
 
                     else:
 
@@ -681,6 +718,212 @@ elif (
                         f"{report.get('status', 'N/A')}"
                     )
 
+                    # 🤖 AI Detection Results
+                    st.markdown("### 🤖 AI Detection")
+
+                    ai_detections = (
+                        report.get("detections")
+                        or report.get("damage_detections")
+                        or []
+                    )
+
+                    if ai_detections:
+
+                        for detection in ai_detections:
+
+                            damage_type = (
+                                detection.get("damage_type")
+                                or detection.get("class")
+                                or "Unknown"
+                            )
+
+                            confidence = detection.get(
+                                "confidence"
+                            )
+
+                            if confidence is not None:
+
+                                try:
+
+                                    confidence_value = float(
+                                        confidence
+                                    )
+
+                                    if confidence_value <= 1:
+                                        confidence_value *= 100
+
+                                    confidence_text = (
+                                        f"{confidence_value:.1f}%"
+                                    )
+
+                                except (
+                                    TypeError,
+                                    ValueError
+                                ):
+
+                                    confidence_text = str(
+                                        confidence
+                                    )
+
+                            else:
+
+                                confidence_text = "N/A"
+
+                            severity = detection.get(
+                                "severity",
+                                "N/A"
+                            )
+
+                            st.write(
+                                f"• **Damage Type:** "
+                                f"{damage_type}"
+                            )
+
+                            st.write(
+                                f"• **Confidence:** "
+                                f"{confidence_text}"
+                            )
+
+                            st.write(
+                                f"• **Severity:** "
+                                f"{severity}"
+                            )
+
+                        overall_severity = (
+                            report.get("overall_severity")
+                            or report.get("severity")
+                            or ai_detections[0].get(
+                                "severity",
+                                "N/A"
+                            )
+                        )
+
+                        rci_score = report.get(
+                            "rci_score"
+                        )
+
+                        if rci_score is None:
+                            rci_score = report.get("rci")
+
+                        if rci_score is not None:
+                            rci_text = f"{rci_score}/3"
+                        else:
+                            rci_text = "N/A"
+
+                        col1, col2 = st.columns(2)
+
+                        with col1:
+
+                            st.metric(
+                                "Overall Severity",
+                                overall_severity
+                            )
+
+                        with col2:
+
+                            st.metric(
+                                "RCI Score",
+                                rci_text
+                            )
+
+                    else:
+
+                        if report.get("ai_detected") is False:
+
+                            st.info(
+                                "No road damage detected."
+                            )
+
+                        else:
+
+                            st.info(
+                                "AI detection data not available."
+                            )
+
+                    # ==================================================
+                    # 💬 CITIZEN-OFFICIAL COMMUNICATION
+                    # ==================================================
+
+                    st.markdown("### 💬 Communication with Official")
+
+                    try:
+                        message_response = requests.get(
+                            f"{API_URL}/reports/{report.get('report_id')}/messages",
+                            params={
+                                "user_id": st.session_state["user_id"]
+                            },
+                            timeout=30
+                        )
+
+                        if message_response.status_code == 200:
+                            message_result = message_response.json()
+
+                            if isinstance(message_result, list):
+                                messages = message_result
+                            else:
+                                messages = message_result.get("messages", [])
+
+                            if messages:
+                                with st.expander("View Conversation", expanded=True):
+                                    for message in messages:
+                                        sender = (
+                                            "You"
+                                            if message.get("sender_role") == "citizen"
+                                            else "Official"
+                                        )
+                                        created_at = message.get("created_at", "")
+                                        st.write(
+                                            f"**{sender}:** {message.get('message', '')}"
+                                        )
+                                        if created_at:
+                                            st.caption(str(created_at))
+                            else:
+                                st.info("No messages yet. You can contact the official below.")
+                        else:
+                            st.warning("Unable to load conversation.")
+
+                    except requests.exceptions.RequestException as e:
+                        st.warning("Unable to connect to the messaging service.")
+
+                    citizen_message = st.text_area(
+                        "Message to Official",
+                        placeholder="Example: Any update regarding this road damage report?",
+                        key=f"citizen_message_{report.get('report_id')}"
+                    )
+
+                    if st.button(
+                        "📤 Send Message",
+                        key=f"send_citizen_message_{report.get('report_id')}",
+                        use_container_width=True
+                    ):
+                        if not citizen_message.strip():
+                            st.warning("Please enter a message.")
+                        else:
+                            try:
+                                send_response = requests.post(
+                                    f"{API_URL}/reports/{report.get('report_id')}/messages",
+                                    params={
+                                        "user_id": st.session_state["user_id"]
+                                    },
+                                    json={
+                                        "message": citizen_message.strip()
+                                    },
+                                    timeout=30
+                                )
+
+                                if send_response.status_code in [200, 201]:
+                                    st.success("Message sent successfully.")
+                                    st.experimental_rerun()
+                                else:
+                                    st.error(
+                                        f"Message could not be sent ({send_response.status_code})"
+                                    )
+                                    st.code(send_response.text)
+
+                            except requests.exceptions.RequestException as e:
+                                st.error("Cannot connect to FastAPI.")
+                                st.code(str(e))
+
                     st.divider()
 
             else:
@@ -712,7 +955,7 @@ elif (
     ):
 
         st.session_state.clear()
-        st.rerun()
+        st.experimental_rerun()
 
 
 # ============================================================
@@ -787,7 +1030,7 @@ elif (
                             "Official login successful!"
                         )
 
-                        st.rerun()
+                        st.experimental_rerun()
 
                 elif response.status_code == 401:
 
@@ -893,24 +1136,48 @@ elif (
             m1, m2, m3 = st.columns(3)
 
             with m1:
-                st.metric("Total Reports", total_reports)
+
+                st.metric(
+                    "Total Reports",
+                    total_reports
+                )
 
             with m2:
-                st.metric("Under Review", under_review_count)
+
+                st.metric(
+                    "Under Review",
+                    under_review_count
+                )
 
             with m3:
-                st.metric("Resolved", resolved_count)
+
+                st.metric(
+                    "Resolved",
+                    resolved_count
+                )
 
             m4, m5, m6 = st.columns(3)
 
             with m4:
-                st.metric("Submitted", submitted_count)
+
+                st.metric(
+                    "Submitted",
+                    submitted_count
+                )
 
             with m5:
-                st.metric("In Progress", in_progress_count)
+
+                st.metric(
+                    "In Progress",
+                    in_progress_count
+                )
 
             with m6:
-                st.metric("Rejected", rejected_count)
+
+                st.metric(
+                    "Rejected",
+                    rejected_count
+                )
 
             if total_reports > 0:
 
@@ -940,7 +1207,9 @@ elif (
 
                 for report in reports:
 
-                    report_id = report.get("report_id")
+                    report_id = report.get(
+                        "report_id"
+                    )
 
                     st.subheader(
                         f"🚧 Report #{report_id}"
@@ -1008,7 +1277,7 @@ elif (
                                     "updated successfully!"
                                 )
 
-                                st.rerun()
+                                st.experimental_rerun()
 
                             else:
 
@@ -1078,6 +1347,90 @@ elif (
                     except requests.exceptions.RequestException:
                         pass
 
+                    # ==================================================
+                    # 💬 CITIZEN-OFFICIAL COMMUNICATION
+                    # ==================================================
+
+                    st.markdown("### 💬 Citizen Messages")
+
+                    try:
+                        message_response = requests.get(
+                            f"{API_URL}/reports/{report_id}/messages",
+                            params={
+                                "user_id": st.session_state["user_id"]
+                            },
+                            timeout=30
+                        )
+
+                        if message_response.status_code == 200:
+                            message_result = message_response.json()
+
+                            if isinstance(message_result, list):
+                                messages = message_result
+                            else:
+                                messages = message_result.get("messages", [])
+
+                            if messages:
+                                with st.expander("View Conversation", expanded=True):
+                                    for message in messages:
+                                        sender = (
+                                            "Citizen"
+                                            if message.get("sender_role") == "citizen"
+                                            else "You"
+                                        )
+                                        created_at = message.get("created_at", "")
+                                        st.write(
+                                            f"**{sender}:** {message.get('message', '')}"
+                                        )
+                                        if created_at:
+                                            st.caption(str(created_at))
+                            else:
+                                st.info("No messages from the citizen yet.")
+                        else:
+                            st.warning("Unable to load conversation.")
+
+                    except requests.exceptions.RequestException as e:
+                        st.warning("Unable to connect to the messaging service.")
+
+                    official_reply = st.text_area(
+                        "Reply to Citizen",
+                        placeholder="Example: Your report is currently under review.",
+                        key=f"official_reply_{report_id}"
+                    )
+
+                    if st.button(
+                        "📤 Send Reply",
+                        key=f"send_official_reply_{report_id}",
+                        use_container_width=True
+                    ):
+                        if not official_reply.strip():
+                            st.warning("Please enter a reply.")
+                        else:
+                            try:
+                                send_response = requests.post(
+                                    f"{API_URL}/reports/{report_id}/messages",
+                                    params={
+                                        "user_id": st.session_state["user_id"]
+                                    },
+                                    json={
+                                        "message": official_reply.strip()
+                                    },
+                                    timeout=30
+                                )
+
+                                if send_response.status_code in [200, 201]:
+                                    st.success("Reply sent successfully.")
+                                    st.experimental_rerun()
+                                else:
+                                    st.error(
+                                        f"Reply could not be sent ({send_response.status_code})"
+                                    )
+                                    st.code(send_response.text)
+
+                            except requests.exceptions.RequestException as e:
+                                st.error("Cannot connect to FastAPI.")
+                                st.code(str(e))
+
                     st.divider()
 
             else:
@@ -1102,5 +1455,4 @@ elif (
     ):
 
         st.session_state.clear()
-        st.rerun()
-        
+        st.experimental_rerun()

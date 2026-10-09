@@ -6,7 +6,8 @@ from models import (
     RoadReport,
     User,
     ReportStatusHistory,
-    DamageDetection
+    DamageDetection,
+    ReportMessage
 )
 from schemas import ReportCreate
 
@@ -103,6 +104,40 @@ def get_reports(
                 "detected_at": detection.detected_at
             })
 
+        # ======================================================
+        # CALCULATE OVERALL SEVERITY + RCI
+        # ======================================================
+
+        if detection_list:
+
+            max_confidence = max(
+                d["confidence"] or 0
+                for d in detection_list
+            )
+
+            if (
+                len(detection_list) >= 3
+                or max_confidence >= 0.80
+            ):
+                overall_severity = "High"
+                rci_score = 3
+
+            elif (
+                len(detection_list) >= 2
+                or max_confidence >= 0.60
+            ):
+                overall_severity = "Medium"
+                rci_score = 2
+
+            else:
+                overall_severity = "Low"
+                rci_score = 1
+
+        else:
+
+            overall_severity = None
+            rci_score = None
+
         report_list.append({
             "report_id": report.report_id,
             "user_id": report.user_id,
@@ -122,17 +157,77 @@ def get_reports(
             "created_at": report.created_at,
             "updated_at": report.updated_at,
 
-            # ==============================================
             # AI INFORMATION
-            # ==============================================
-
             "ai_detected": len(detection_list) > 0,
-            "detections": detection_list
+            "detections": detection_list,
+            "overall_severity": overall_severity,
+            "rci_score": rci_score
         })
 
     return {
         "total_reports": len(report_list),
         "reports": report_list
+    }
+
+
+# ==========================================================
+# SAVE AI DETECTIONS FOR A REPORT
+# ==========================================================
+
+@router.post("/{report_id}/detections")
+def save_detections(
+    report_id: int,
+    data: dict,
+    db: Session = Depends(get_db)
+):
+
+    report = (
+        db.query(RoadReport)
+        .filter(
+            RoadReport.report_id == report_id
+        )
+        .first()
+    )
+
+    if not report:
+        raise HTTPException(
+            status_code=404,
+            detail="Road report not found"
+        )
+
+    # Remove previous detections for this report
+    db.query(DamageDetection).filter(
+        DamageDetection.report_id == report_id
+    ).delete()
+
+    detections = data.get("detections", [])
+
+    saved_detections = []
+
+    for detection in detections:
+
+        damage_detection = DamageDetection(
+            report_id=report_id,
+            damage_type=detection.get(
+                "damage_type",
+                detection.get("class", "Unknown")
+            ),
+            confidence=detection.get("confidence"),
+            severity=detection.get(
+                "severity",
+                "low"
+            ).lower()
+        )
+
+        db.add(damage_detection)
+        saved_detections.append(damage_detection)
+
+    db.commit()
+
+    return {
+        "message": "AI detections saved successfully",
+        "report_id": report_id,
+        "detection_count": len(saved_detections)
     }
 
 
@@ -162,10 +257,7 @@ def update_report_status(
             detail="Road report not found"
         )
 
-
-    # ------------------------------------------------------
     # VERIFY OFFICIAL USER
-    # ------------------------------------------------------
 
     official = (
         db.query(User)
@@ -182,10 +274,7 @@ def update_report_status(
             detail="Only an official can update report status"
         )
 
-
-    # ------------------------------------------------------
     # VALIDATE STATUS
-    # ------------------------------------------------------
 
     allowed_statuses = [
         "submitted",
@@ -201,24 +290,15 @@ def update_report_status(
             detail="Invalid status"
         )
 
-
-    # ------------------------------------------------------
     # STORE OLD STATUS
-    # ------------------------------------------------------
 
     old_status = report.status
 
-
-    # ------------------------------------------------------
     # UPDATE CURRENT STATUS
-    # ------------------------------------------------------
 
     report.status = status
 
-
-    # ------------------------------------------------------
     # CREATE STATUS HISTORY RECORD
-    # ------------------------------------------------------
 
     history = ReportStatusHistory(
         report_id=report_id,
@@ -229,16 +309,12 @@ def update_report_status(
 
     db.add(history)
 
-
-    # ------------------------------------------------------
     # SAVE BOTH CHANGES
-    # ------------------------------------------------------
 
     db.commit()
 
     db.refresh(report)
     db.refresh(history)
-
 
     return {
         "message": "Report status updated successfully",
@@ -274,7 +350,6 @@ def get_report_history(
             detail="Road report not found"
         )
 
-
     history = (
         db.query(ReportStatusHistory)
         .filter(
@@ -286,8 +361,201 @@ def get_report_history(
         .all()
     )
 
-
     return {
         "report_id": report_id,
         "history": history
+    }
+
+
+# ==========================================================
+# GET MESSAGES FOR A REPORT
+# ==========================================================
+
+@router.get("/{report_id}/messages")
+def get_report_messages(
+    report_id: int,
+    user_id: int,
+    db: Session = Depends(get_db)
+):
+
+    # ------------------------------------------------------
+    # FIND REPORT
+    # ------------------------------------------------------
+
+    report = (
+        db.query(RoadReport)
+        .filter(
+            RoadReport.report_id == report_id
+        )
+        .first()
+    )
+
+    if not report:
+        raise HTTPException(
+            status_code=404,
+            detail="Road report not found"
+        )
+
+    # ------------------------------------------------------
+    # FIND REQUESTING USER
+    # ------------------------------------------------------
+
+    user = (
+        db.query(User)
+        .filter(
+            User.user_id == user_id
+        )
+        .first()
+    )
+
+    if not user:
+        raise HTTPException(
+            status_code=404,
+            detail="User not found"
+        )
+
+    # ------------------------------------------------------
+    # ACCESS CONTROL
+    # Citizen must own the report.
+    # Official can access any report.
+    # ------------------------------------------------------
+
+    if (
+        user.role != "official"
+        and report.user_id != user_id
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="You are not authorized to view these messages"
+        )
+
+    # ------------------------------------------------------
+    # GET MESSAGES
+    # ------------------------------------------------------
+
+    messages = (
+        db.query(ReportMessage)
+        .filter(
+            ReportMessage.report_id == report_id
+        )
+        .order_by(
+            ReportMessage.created_at.asc()
+        )
+        .all()
+    )
+
+    return {
+        "report_id": report_id,
+        "messages": [
+            {
+                "message_id": message.message_id,
+                "report_id": message.report_id,
+                "sender_id": message.sender_id,
+                "sender_role": message.sender_role,
+                "message": message.message,
+                "created_at": message.created_at
+            }
+            for message in messages
+        ]
+    }
+
+
+# ==========================================================
+# SEND MESSAGE
+# ==========================================================
+
+@router.post("/{report_id}/messages")
+def send_report_message(
+    report_id: int,
+    user_id: int,
+    data: dict,
+    db: Session = Depends(get_db)
+):
+
+    # ------------------------------------------------------
+    # FIND REPORT
+    # ------------------------------------------------------
+
+    report = (
+        db.query(RoadReport)
+        .filter(
+            RoadReport.report_id == report_id
+        )
+        .first()
+    )
+
+    if not report:
+        raise HTTPException(
+            status_code=404,
+            detail="Road report not found"
+        )
+
+    # ------------------------------------------------------
+    # FIND SENDER
+    # ------------------------------------------------------
+
+    sender = (
+        db.query(User)
+        .filter(
+            User.user_id == user_id
+        )
+        .first()
+    )
+
+    if not sender:
+        raise HTTPException(
+            status_code=404,
+            detail="User not found"
+        )
+
+    # ------------------------------------------------------
+    # ACCESS CONTROL
+    # ------------------------------------------------------
+
+    if (
+        sender.role != "official"
+        and report.user_id != user_id
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="You are not authorized to send messages for this report"
+        )
+
+    # ------------------------------------------------------
+    # VALIDATE MESSAGE
+    # ------------------------------------------------------
+
+    message_text = data.get("message")
+
+    if not message_text or not message_text.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="Message cannot be empty"
+        )
+
+    message_text = message_text.strip()
+
+    # ------------------------------------------------------
+    # CREATE MESSAGE
+    # ------------------------------------------------------
+
+    new_message = ReportMessage(
+        report_id=report_id,
+        sender_id=user_id,
+        sender_role=sender.role,
+        message=message_text
+    )
+
+    db.add(new_message)
+    db.commit()
+    db.refresh(new_message)
+
+    return {
+        "message": "Message sent successfully",
+        "message_id": new_message.message_id,
+        "report_id": new_message.report_id,
+        "sender_id": new_message.sender_id,
+        "sender_role": new_message.sender_role,
+        "message_text": new_message.message,
+        "created_at": new_message.created_at
     }
